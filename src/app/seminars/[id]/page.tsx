@@ -758,6 +758,18 @@ export default function SeminarDetailPage() {
                   <CheckSquare className="w-4 h-4 mr-2" />
                   출석 관리
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => proofMaterialsInputRef.current?.click()}
+                  disabled={uploadingProofMaterials}
+                >
+                  {uploadingProofMaterials ? (
+                    <LoadingSpinner className="w-4 h-4 mr-2" />
+                  ) : (
+                    <FileImage className="w-4 h-4 mr-2" />
+                  )}
+                  증빙 자료 업로드
+                </Button>
                 <Button 
                   variant="destructive" 
                   onClick={() => setShowDeleteConfirm(true)}
