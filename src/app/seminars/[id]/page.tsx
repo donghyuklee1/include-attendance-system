@@ -334,6 +334,42 @@ export default function SeminarDetailPage() {
     }
   };
 
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const handleUploadFile = async (file: File | null) => {
+    if (!id || !user?.id || !file) return;
+
+    try {
+      setUploadingFile(true);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`/api/seminars/${id}/evidence/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || 'Upload failed');
+      }
+
+      const result = await res.json();
+      // Update evidenceData count and show modal
+      setEvidenceData(prev => prev ? { ...prev, fileCount: result.data.fileCount } : prev);
+      // Open uploaded file in new tab
+      if (result.data.fileLink) {
+        window.open(result.data.fileLink, '_blank');
+      }
+      alert('업로드 완료');
+    } catch (err) {
+      console.error('❌ Error uploading file:', err);
+      alert(err instanceof Error ? err.message : '업로드 실패');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
   // Save seminar data
   const handleSave = async () => {
     if (!editData || !seminarData) return;
@@ -1514,6 +1550,34 @@ export default function SeminarDetailPage() {
                     <ExternalLink className="w-4 h-4 mr-2" />
                     Google Drive에서 열기
                   </Button>
+                </div>
+
+                <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                  <p className="text-sm font-medium mb-2">직접 업로드</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        if (!f) return;
+                        handleUploadFile(f);
+                      }}
+                    />
+                    <Button
+                      onClick={() => {
+                        const input = document.querySelector('input[type=file]') as HTMLInputElement | null;
+                        if (input && input.files && input.files[0]) {
+                          handleUploadFile(input.files[0]);
+                        } else {
+                          alert('업로드할 파일을 선택하세요');
+                        }
+                      }}
+                      disabled={uploadingFile}
+                    >
+                      {uploadingFile ? '업로드 중...' : '업로드'}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="p-3 bg-muted rounded-lg">

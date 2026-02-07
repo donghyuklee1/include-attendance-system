@@ -77,7 +77,7 @@ export async function uploadFileToGoogleDrive(
   fileName: string,
   fileContent: Buffer,
   mimeType: string = 'image/jpeg'
-): Promise<string> {
+): Promise<{ id: string; webViewLink?: string }> {
   const drive = getGoogleDriveClient();
 
   try {
@@ -100,7 +100,7 @@ export async function uploadFileToGoogleDrive(
     }
 
     console.log(`✅ Uploaded file: ${fileName} (ID: ${response.data.id})`);
-    return response.data.id;
+    return { id: response.data.id, webViewLink: response.data.webViewLink || undefined };
   } catch (error) {
     console.error('❌ Error uploading file:', error);
     throw new Error('Failed to upload file to Google Drive');
