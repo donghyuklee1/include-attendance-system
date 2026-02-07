@@ -38,7 +38,9 @@ import {
   Trash2,
   ChevronDown,
   Settings,
-  Circle
+  Circle,
+  FolderOpen,
+  ExternalLink
 } from 'lucide-react';
   import { DateTimePicker } from '@/components/ui/date-time-picker';
   import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -135,6 +137,16 @@ export default function SeminarDetailPage() {
   const [addingSession, setAddingSession] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Evidence submission states
+  const [submittingEvidence, setSubmittingEvidence] = useState(false);
+  const [evidenceData, setEvidenceData] = useState<{
+    folderId: string;
+    folderName: string;
+    googleDriveLink: string;
+    fileCount: number;
+  } | null>(null);
+  const [showEvidenceModal, setShowEvidenceModal] = useState(false);
 
   // Edit session states
   const [editingSession, setEditingSession] = useState<Session | null>(null);
@@ -287,6 +299,38 @@ export default function SeminarDetailPage() {
       } : null);
     } catch (err) {
       console.error('Error refreshing seminar:', err);
+    }
+  };
+
+  // Submit evidence to Google Drive
+  const handleSubmitEvidence = async () => {
+    if (!id || !user?.id) return;
+
+    try {
+      setSubmittingEvidence(true);
+      console.log('📤 Submitting evidence for seminar:', id);
+
+      const response = await fetch(`/api/seminars/${id}/evidence`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit evidence');
+      }
+
+      const data = await response.json();
+      setEvidenceData(data.data);
+      setShowEvidenceModal(true);
+      console.log('✅ Evidence folder created/updated:', data.data);
+    } catch (err) {
+      console.error('❌ Error submitting evidence:', err);
+      alert(err instanceof Error ? err.message : 'Failed to submit evidence');
+    } finally {
+      setSubmittingEvidence(false);
     }
   };
 
@@ -715,6 +759,14 @@ export default function SeminarDetailPage() {
                 <Button variant="outline" onClick={() => router.push(`/seminars/${id}/attendance`)}>
                   <CheckSquare className="w-4 h-4 mr-2" />
                   출석 관리
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleSubmitEvidence}
+                  disabled={submittingEvidence}
+                >
+                  <FolderOpen className="w-4 h-4 mr-2" />
+                  {submittingEvidence ? '로딩 중...' : '증빙자료 업로드'}
                 </Button>
                 <Button 
                   variant="destructive" 
@@ -1425,6 +1477,66 @@ export default function SeminarDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Evidence Submission Modal */}
+        {showEvidenceModal && evidenceData && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-background border border-border rounded-lg max-w-2xl w-full p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                  <FolderOpen className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">증빙자료 폴더 생성 완료</h3>
+                  <p className="text-sm text-muted-foreground">Google Drive에 폴더가 생성되었습니다</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">세미나명</p>
+                      <p className="font-medium text-foreground">{evidenceData.folderName}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">폴더에 있는 파일</p>
+                      <p className="font-medium text-foreground">{evidenceData.fileCount}개</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button 
+                    className="flex-1"
+                    onClick={() => window.open(evidenceData.googleDriveLink, '_blank')}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Google Drive에서 열기
+                  </Button>
+                </div>
+
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-2">📝 다음 단계:</p>
+                  <ol className="text-xs text-foreground space-y-1">
+                    <li>1. Google Drive 폴더에 접근합니다</li>
+                    <li>2. 활동 증빙 사진을 업로드합니다</li>
+                    <li>3. 파일이 자동으로 동기화됩니다</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={() => setShowEvidenceModal(false)}
+                  className="flex-1"
+                >
+                  닫기
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Delete Confirmation Dialog */}
         {showDeleteConfirm && (
