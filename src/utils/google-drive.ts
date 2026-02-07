@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 // Initialize Google Drive API with service account
 export function getGoogleDriveClient() {
@@ -16,6 +17,10 @@ export function getGoogleDriveClient() {
       keyJsonStr = Buffer.from(keyJsonStr, 'base64').toString('utf-8');
     }
     const serviceAccountKey = JSON.parse(keyJsonStr);
+    // Log client email to help diagnose folder sharing/permission issues
+    if (serviceAccountKey?.client_email) {
+      console.log('🔐 Using Google service account:', serviceAccountKey.client_email);
+    }
 
     const auth = new google.auth.GoogleAuth({
       credentials: serviceAccountKey,
@@ -85,7 +90,9 @@ export async function uploadFileToGoogleDrive(
   try {
     console.log(`📤 Uploading file: ${fileName} to folder: ${parentFolderId}`);
     
-    // Use Buffer directly as media body (googleapis accepts Buffer)
+    // Convert Buffer to Readable stream so googleapis can pipe it
+    const mediaBody = Buffer.isBuffer(fileContent) ? Readable.from(fileContent) : fileContent as any;
+
     const response = await drive.files.create({
       requestBody: {
         name: fileName,
@@ -93,7 +100,7 @@ export async function uploadFileToGoogleDrive(
       },
       media: {
         mimeType,
-        body: fileContent,
+        body: mediaBody,
       },
       fields: 'id, webViewLink',
     });
