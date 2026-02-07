@@ -85,10 +85,7 @@ export async function uploadFileToGoogleDrive(
   try {
     console.log(`📤 Uploading file: ${fileName} to folder: ${parentFolderId}`);
     
-    // Ensure media body is a readable stream (safer on serverless)
-    const { Readable } = await import('stream');
-    const mediaBody = Buffer.isBuffer(fileContent) ? Readable.from(fileContent) : fileContent;
-
+    // Use Buffer directly as media body (googleapis accepts Buffer)
     const response = await drive.files.create({
       requestBody: {
         name: fileName,
@@ -96,7 +93,7 @@ export async function uploadFileToGoogleDrive(
       },
       media: {
         mimeType,
-        body: mediaBody,
+        body: fileContent,
       },
       fields: 'id, webViewLink',
     });
