@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Get seminar and permission
     const { data: seminar, error: seminarError } = await supabase
       .from('seminars')
-      .select('id, title, owner_id, start_date')
+      .select('id, title, owner_id')
       .eq('id', seminarId)
       .single();
 
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    const evidenceDate = seminar.start_date ? new Date(seminar.start_date) : new Date();
+    // 제출 시점의 날짜로 폴더 구분 (매주 활동별 증빙 분리)
+    const evidenceDate = new Date();
     const folderName = generateFolderName(seminar.title, evidenceDate);
 
     // Ensure folder exists

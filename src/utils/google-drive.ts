@@ -1,6 +1,16 @@
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 
+/**
+ * Google Drive integration (Service Account).
+ *
+ * IMPORTANT: Service accounts do NOT have their own storage quota.
+ * Set GOOGLE_DRIVE_FOLDER_ID to one of:
+ * 1. A folder inside a Shared Drive where the service account is a member (recommended).
+ * 2. A folder in a real user's "My Drive" that has been shared with the service account (Editor).
+ * See: https://support.google.com/a/answer/7281227
+ */
+
 // Initialize Google Drive API with service account
 export function getGoogleDriveClient() {
   const serviceAccountKeyStr = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
@@ -42,12 +52,14 @@ export async function getOrCreateFolder(
   const drive = getGoogleDriveClient();
 
   try {
-    // Search for existing folder
+    // Search for existing folder (supportsAllDrives for Shared Drive)
     const response = await drive.files.list({
       q: `'${parentFolderId}' in parents and name='${folderName}' and trashed=false and mimeType='application/vnd.google-apps.folder'`,
       spaces: 'drive',
       fields: 'files(id, name)',
       pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
 
     if (response.data.files && response.data.files.length > 0) {
@@ -64,6 +76,7 @@ export async function getOrCreateFolder(
         parents: [parentFolderId],
       },
       fields: 'id',
+      supportsAllDrives: true,
     });
 
     if (!createResponse.data.id) {
@@ -103,6 +116,7 @@ export async function uploadFileToGoogleDrive(
         body: mediaBody,
       },
       fields: 'id, webViewLink',
+      supportsAllDrives: true,
     });
 
     if (!response.data.id) {
@@ -123,7 +137,7 @@ export async function uploadFileToGoogleDrive(
   }
 }
 
-// Generate folder name for seminar evidence (format: "세미나명_YYYYMMDD")
+// Generate folder name for seminar evidence (format: "세미나명_YYYYMMDD", 날짜 = 증빙 제출/조회 시점)
 export function generateFolderName(seminarTitle: string, date: Date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -143,6 +157,8 @@ export async function listFilesInFolder(folderId: string): Promise<Array<{ id: s
       spaces: 'drive',
       fields: 'files(id, name, webViewLink)',
       pageSize: 100,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
 
     return (response.data.files || []).map(file => ({

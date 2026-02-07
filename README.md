@@ -204,6 +204,22 @@ cp .env.example .env.local
 npm run dev
 ```
 
+### Google Drive 설정 (세미나 증빙 사진 동기화)
+
+웹에서 업로드한 증빙 사진을 Google Drive에 저장하려면 **서비스 계정은 자체 저장 용량이 없습니다.**  
+반드시 아래 둘 중 하나로 설정해야 합니다.
+
+1. **Shared Drive 사용 (권장)**  
+   - Google Drive에서 **공유 드라이브**를 만든 뒤, 서비스 계정 이메일을 멤버로 추가(편집 권한)  
+   - 공유 드라이브 안에 폴더를 만들고, 그 폴더 ID를 `GOOGLE_DRIVE_FOLDER_ID`로 설정  
+
+2. **일반 사용자 Drive 폴더 공유**  
+   - 본인 Google Drive에 폴더를 만들고, 서비스 계정 이메일과 **편집 권한**으로 공유  
+   - 해당 폴더 ID를 `GOOGLE_DRIVE_FOLDER_ID`로 설정  
+
+환경 변수: `GOOGLE_SERVICE_ACCOUNT_KEY`(JSON 또는 Base64), `GOOGLE_DRIVE_FOLDER_ID`  
+참고: [Google 지원 - 서비스 계정 저장 공간](https://support.google.com/a/answer/7281227)
+
 ## 📈 성공 지표
 
 ### 기술적 목표

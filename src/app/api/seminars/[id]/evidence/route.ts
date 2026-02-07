@@ -29,7 +29,7 @@ export async function POST(
     // Get seminar details
     const { data: seminar, error: seminarError } = await supabase
       .from('seminars')
-      .select('id, title, owner_id, start_date')
+      .select('id, title, owner_id')
       .eq('id', seminarId)
       .single();
 
@@ -56,8 +56,8 @@ export async function POST(
       );
     }
 
-    // Generate folder name with seminar title and date
-    const evidenceDate = seminar.start_date ? new Date(seminar.start_date) : new Date();
+    // 조회 시점의 날짜 기준 폴더 (매주 활동별 증빙 구분)
+    const evidenceDate = new Date();
     const folderName = generateFolderName(seminar.title, evidenceDate);
 
     console.log(`📁 Creating/updating Google Drive folder: ${folderName}`);
@@ -123,7 +123,7 @@ export async function GET(
     // Get seminar details
     const { data: seminar, error: seminarError } = await supabase
       .from('seminars')
-      .select('id, title, owner_id, start_date')
+      .select('id, title, owner_id')
       .eq('id', seminarId)
       .single();
 
@@ -150,8 +150,8 @@ export async function GET(
       );
     }
 
-    // Generate folder name
-    const evidenceDate = seminar.start_date ? new Date(seminar.start_date) : new Date();
+    // 조회 시점의 날짜 기준 폴더 (매주 활동별 증빙 구분)
+    const evidenceDate = new Date();
     const folderName = generateFolderName(seminar.title, evidenceDate);
 
     // Get evidence folder
