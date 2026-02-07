@@ -1,5 +1,4 @@
 import { google } from 'googleapis';
-import { Readable } from 'stream';
 
 /**
  * Google Drive integration (Service Account).
@@ -11,32 +10,33 @@ import { Readable } from 'stream';
  * See: https://support.google.com/a/answer/7281227
  */
 
-// Initialize Google Drive API with service account
-export function getGoogleDriveClient() {
+function getServiceAccountKey() {
   const serviceAccountKeyStr = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-  
   if (!serviceAccountKeyStr) {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not set');
   }
+  let keyJsonStr = String(serviceAccountKeyStr);
+  if (!keyJsonStr.trim().startsWith('{')) {
+    keyJsonStr = Buffer.from(keyJsonStr, 'base64').toString('utf-8');
+  }
+  return JSON.parse(keyJsonStr);
+}
 
+function getAuth() {
+  const serviceAccountKey = getServiceAccountKey();
+  if (serviceAccountKey?.client_email) {
+    console.log('🔐 Using Google service account:', serviceAccountKey.client_email);
+  }
+  return new google.auth.GoogleAuth({
+    credentials: serviceAccountKey,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  });
+}
+
+// Initialize Google Drive API with service account
+export function getGoogleDriveClient() {
   try {
-    // Detect whether the env value is raw JSON or base64-encoded JSON
-    let keyJsonStr = String(serviceAccountKeyStr);
-    if (!keyJsonStr.trim().startsWith('{')) {
-      // assume base64
-      keyJsonStr = Buffer.from(keyJsonStr, 'base64').toString('utf-8');
-    }
-    const serviceAccountKey = JSON.parse(keyJsonStr);
-    // Log client email to help diagnose folder sharing/permission issues
-    if (serviceAccountKey?.client_email) {
-      console.log('🔐 Using Google service account:', serviceAccountKey.client_email);
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: serviceAccountKey,
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    });
-
+    const auth = getAuth();
     return google.drive({ version: 'v3', auth });
   } catch (error) {
     console.error('❌ Error initializing Google Drive client:', error);
@@ -91,49 +91,93 @@ export async function getOrCreateFolder(
   }
 }
 
-// Upload file to Google Drive
+// Upload file to Google Drive (resumable upload: 5MB 제한 없음, Shared Drive에서도 안정적)
 export async function uploadFileToGoogleDrive(
   parentFolderId: string,
   fileName: string,
   fileContent: Buffer,
   mimeType: string = 'image/jpeg'
 ): Promise<{ id: string; webViewLink?: string }> {
-  const drive = getGoogleDriveClient();
-
   try {
-    console.log(`📤 Uploading file: ${fileName} to folder: ${parentFolderId}`);
-    
-    // Convert Buffer to Readable stream so googleapis can pipe it
-    const mediaBody = Buffer.isBuffer(fileContent) ? Readable.from(fileContent) : fileContent as any;
-
-    const response = await drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [parentFolderId],
-      },
-      media: {
-        mimeType,
-        body: mediaBody,
-      },
-      fields: 'id, webViewLink',
-      supportsAllDrives: true,
-    });
-
-    if (!response.data.id) {
-      throw new Error('Failed to upload file');
+    console.log(`📤 Uploading file: ${fileName} to folder: ${parentFolderId} (resumable)`);
+    const auth = getAuth();
+    const authClient = await auth.getClient();
+    const tokenResponse = await authClient.getAccessToken();
+    const token = tokenResponse.token;
+    if (!token) {
+      throw new Error('Failed to get access token for Drive upload');
     }
 
-    console.log(`✅ Uploaded file: ${fileName} (ID: ${response.data.id})`);
-    return { id: response.data.id, webViewLink: response.data.webViewLink || undefined };
-  } catch (error: any) {
-    console.error('❌ Error uploading file:', {
-      message: error?.message,
-      code: error?.code,
-      errors: error?.errors || undefined,
-      stack: error?.stack,
+    // 1) Start resumable session (Shared Drive 지원 쿼리 포함)
+    const initUrl = new URL('https://www.googleapis.com/upload/drive/v3/files');
+    initUrl.searchParams.set('uploadType', 'resumable');
+    initUrl.searchParams.set('supportsAllDrives', 'true');
+    initUrl.searchParams.set('fields', 'id, webViewLink');
+
+    const initRes = await fetch(initUrl.toString(), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: JSON.stringify({
+        name: fileName,
+        parents: [parentFolderId],
+      }),
     });
-    // rethrow to allow upstream handler to return details
-    throw error;
+
+    if (!initRes.ok) {
+      const errBody = await initRes.text();
+      let errMsg = `Drive upload init failed: ${initRes.status} ${initRes.statusText}`;
+      try {
+        const errJson = JSON.parse(errBody);
+        errMsg = errJson.error?.message || errBody || errMsg;
+      } catch {
+        if (errBody) errMsg += ` - ${errBody}`;
+      }
+      throw new Error(errMsg);
+    }
+
+    const location = initRes.headers.get('Location');
+    if (!location) {
+      throw new Error('Drive resumable upload: no Location header');
+    }
+
+    // 2) Upload file content in one request
+    const size = fileContent.length;
+    const uploadRes = await fetch(location, {
+      method: 'PUT',
+      headers: {
+        'Content-Length': String(size),
+        'Content-Range': `bytes 0-${size - 1}/${size}`,
+        'Content-Type': mimeType,
+      },
+      body: fileContent,
+    });
+
+    if (!uploadRes.ok) {
+      const errBody = await uploadRes.text();
+      let errMsg = `Drive file upload failed: ${uploadRes.status} ${uploadRes.statusText}`;
+      try {
+        const errJson = JSON.parse(errBody);
+        errMsg = errJson.error?.message || errBody || errMsg;
+      } catch {
+        if (errBody) errMsg += ` - ${errBody}`;
+      }
+      throw new Error(errMsg);
+    }
+
+    const fileData = (await uploadRes.json()) as { id?: string; webViewLink?: string };
+    if (!fileData.id) {
+      throw new Error('Failed to upload file: no id in response');
+    }
+
+    console.log(`✅ Uploaded file: ${fileName} (ID: ${fileData.id})`);
+    return { id: fileData.id, webViewLink: fileData.webViewLink };
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error('❌ Error uploading file:', { message: err.message, stack: err.stack });
+    throw err;
   }
 }
 

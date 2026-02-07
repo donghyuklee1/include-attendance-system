@@ -220,6 +220,8 @@ npm run dev
 환경 변수: `GOOGLE_SERVICE_ACCOUNT_KEY`(JSON 또는 Base64), `GOOGLE_DRIVE_FOLDER_ID`  
 참고: [Google 지원 - 서비스 계정 저장 공간](https://support.google.com/a/answer/7281227)
 
+**상세 설정 가이드:** [docs/GOOGLE_DRIVE_SETUP.md](docs/GOOGLE_DRIVE_SETUP.md) 참고
+
 ## 📈 성공 지표
 
 ### 기술적 목표
