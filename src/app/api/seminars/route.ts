@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       tags: data.tags || [],
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line
     const { data: seminar, error } = await supabase
       .from('seminars')
       .insert(insertData as any)
@@ -174,7 +174,6 @@ export async function POST(request: NextRequest) {
     if (process.env.GOOGLE_DRIVE_FOLDER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
       try {
         const folderId = await createSeminarFolderInDrive(seminarData.title);
-        // @ts-expect-error - Supabase client types infer never for update
         await supabase.from('seminars').update({ google_drive_folder_id: folderId }).eq('id', seminarData.id);
         console.log('✅ Google Drive folder created for seminar:', seminarData.title);
       } catch (driveError) {
