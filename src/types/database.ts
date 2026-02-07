@@ -98,6 +98,7 @@ export type Database = {
           application_start: string;
           application_end: string;
           external_url: string | null;
+          google_drive_folder_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -116,6 +117,7 @@ export type Database = {
           application_start: string;
           application_end: string;
           external_url?: string | null;
+          google_drive_folder_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -132,6 +134,7 @@ export type Database = {
           application_start?: string;
           application_end?: string;
           external_url?: string | null;
+          google_drive_folder_id?: string | null;
           updated_at?: string;
         };
       };

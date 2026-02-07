@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +38,9 @@ import {
   Trash2,
   ChevronDown,
   Settings,
-  Circle
+  Circle,
+  Upload,
+  FileImage
 } from 'lucide-react';
   import { DateTimePicker } from '@/components/ui/date-time-picker';
   import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -152,6 +154,11 @@ export default function SeminarDetailPage() {
   // Status management states
   const [changingStatus, setChangingStatus] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
+  // Proof materials (증빙 자료) upload states
+  const [uploadingProofMaterials, setUploadingProofMaterials] = useState(false);
+  const [proofMaterialsResult, setProofMaterialsResult] = useState<{ name: string; webViewLink: string; error?: string }[] | null>(null);
+  const proofMaterialsInputRef = useRef<HTMLInputElement>(null);
 
   const canManage = isAdmin || (user?.id === seminarData?.owner.id);
 
@@ -553,6 +560,41 @@ export default function SeminarDetailPage() {
       console.error('Error updating seminar status:', err);
     } finally {
       setChangingStatus(false);
+    }
+  };
+
+  // Handle proof materials upload
+  const handleProofMaterialsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !seminarData || !id) return;
+
+    try {
+      setUploadingProofMaterials(true);
+      setProofMaterialsResult(null);
+
+      const formData = new FormData();
+      Array.from(files).forEach((file) => formData.append('files', file));
+
+      const response = await fetch(`/api/seminars/${id}/proof-materials`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || '업로드에 실패했습니다.');
+      }
+
+      setProofMaterialsResult(data.results || []);
+      if (proofMaterialsInputRef.current) {
+        proofMaterialsInputRef.current.value = '';
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '증빙 자료 업로드에 실패했습니다.');
+      console.error('Proof materials upload error:', err);
+    } finally {
+      setUploadingProofMaterials(false);
     }
   };
 
@@ -1069,6 +1111,72 @@ export default function SeminarDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Proof Materials Upload Card - 세미나 증빙 자료 */}
+            {canManage && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <FileImage className="w-4 h-4 text-primary" />
+                    <CardTitle className="text-sm">증빙 자료 업로드</CardTitle>
+                  </div>
+                  <CardDescription className="text-xs">
+                    사진·PDF를 업로드하면 Google Drive에 세미나명_일자 형식으로 자동 저장됩니다.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <input
+                    ref={proofMaterialsInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    multiple
+                    className="hidden"
+                    onChange={handleProofMaterialsUpload}
+                    disabled={uploadingProofMaterials}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => proofMaterialsInputRef.current?.click()}
+                    disabled={uploadingProofMaterials}
+                  >
+                    {uploadingProofMaterials ? (
+                      <>
+                        <LoadingSpinner className="w-4 h-4 mr-2" />
+                        업로드 중...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Google Drive에 증빙 자료 업로드
+                      </>
+                    )}
+                  </Button>
+                  {proofMaterialsResult && proofMaterialsResult.length > 0 && (
+                    <div className="space-y-1 text-xs">
+                      {proofMaterialsResult.map((r, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <span className="truncate text-muted-foreground">{r.name}</span>
+                          {r.error ? (
+                            <span className="text-destructive shrink-0">{r.error}</span>
+                          ) : r.webViewLink ? (
+                            <a
+                              href={r.webViewLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline shrink-0"
+                            >
+                              보기
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
 

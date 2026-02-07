@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { sendSeminarCreatedNotification } from '@/lib/notifications';
+import { createSeminarFolderInDrive } from '@/lib/google-drive';
+import type { Database } from '@/types/database';
+
+type SeminarRow = Database['public']['Tables']['seminars']['Row'];
+type SeminarInsert = Database['public']['Tables']['seminars']['Insert'];
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,11 +64,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform data to match frontend expectations
-    const transformedSeminars = data?.map(seminar => {
-      // Check current user's enrollment status
-      const currentUserEnrollment = user ? 
-        seminar.enrollments?.find((e: any) => e.user_id === user.id) : null;
-      
+    type SeminarWithRelations = SeminarRow & {
+      users?: { name?: string; email?: string } | null;
+      semesters?: { name?: string } | null;
+      enrollments?: Array<{ user_id?: string; status?: string; applied_at?: string }>;
+      sessions?: Array<{ id?: string }>;
+    };
+    const transformedSeminars = (data as SeminarWithRelations[] | null)?.map(seminar => {
+      const currentUserEnrollment = user ?
+        seminar.enrollments?.find((e) => e.user_id === user.id) : null;
       return {
         id: seminar.id,
         title: seminar.title,
@@ -71,8 +80,8 @@ export async function GET(request: NextRequest) {
         instructor: seminar.users?.name || 'Unknown',
         startDate: seminar.start_date,
         endDate: seminar.end_date,
-        capacity: seminar.capacity || seminar.max_participants || 0,
-        enrolled: seminar.enrollments?.filter((e: any) => e.status === 'approved').length || 0,
+        capacity: seminar.capacity || 0,
+        enrolled: seminar.enrollments?.filter((e) => e.status === 'approved').length || 0,
         location: seminar.location,
         tags: seminar.tags || [],
         status: seminar.status,
@@ -80,7 +89,6 @@ export async function GET(request: NextRequest) {
         semester: seminar.semesters?.name || 'Unknown',
         applicationStart: seminar.application_start,
         applicationEnd: seminar.application_end,
-
         currentUserEnrollment: currentUserEnrollment ? {
           status: currentUserEnrollment.status,
           applied_at: currentUserEnrollment.applied_at
@@ -113,7 +121,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Semester ID is required' }, { status: 400 });
     }
 
-    // Verify semester exists and is managed by admin
     const { data: semester, error: semesterError } = await supabase
       .from('semesters')
       .select('id, name, is_active')
@@ -125,32 +132,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid semester selected. Please contact admin.' }, { status: 400 });
     }
 
+    const semesterData = semester as { name: string; is_active: boolean };
     console.log('🎯 Creating new seminar:', {
       title: data.title,
       owner: user.id,
-      semester: semester.name,
-      isActiveSemester: semester.is_active
+      semester: semesterData.name,
+      isActiveSemester: semesterData.is_active
     });
 
-     // Create seminar
+    const insertData: SeminarInsert = {
+      title: data.title,
+      description: data.description,
+      capacity: data.capacity,
+      start_date: data.start_date || data.startDate,
+      end_date: data.end_date || data.endDate,
+      location: data.location ?? null,
+      external_url: data.external_url || data.externalUrl || null,
+      owner_id: user.id,
+      semester_id: semesterId,
+      status: 'draft',
+      application_start: data.application_start || data.applicationStart,
+      application_end: data.application_end || data.applicationEnd,
+      tags: data.tags || [],
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: seminar, error } = await supabase
       .from('seminars')
-      .insert({
-        title: data.title,
-        description: data.description,
-        capacity: data.capacity,
-        start_date: data.start_date || data.startDate,
-        end_date: data.end_date || data.endDate,
-        location: data.location,
-        external_url: data.external_url || data.externalUrl || null,
-        owner_id: user.id,
-        semester_id: semesterId,
-        status: 'draft',
-  
-        application_start: data.application_start || data.applicationStart,
-        application_end: data.application_end || data.applicationEnd,
-        tags: data.tags || [],
-      })
+      .insert(insertData as any)
       .select()
       .single();
 
@@ -159,20 +168,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create seminar' }, { status: 500 });
     }
 
-    console.log('✅ Seminar created successfully:', seminar.id);
+    const seminarData = seminar as SeminarRow;
+    console.log('✅ Seminar created successfully:', seminarData.id);
 
-    // Automatically enroll the creator in their own seminar
+    if (process.env.GOOGLE_DRIVE_FOLDER_ID && process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      try {
+        const folderId = await createSeminarFolderInDrive(seminarData.title);
+        // @ts-expect-error - Supabase client types infer never for update
+        await supabase.from('seminars').update({ google_drive_folder_id: folderId }).eq('id', seminarData.id);
+        console.log('✅ Google Drive folder created for seminar:', seminarData.title);
+      } catch (driveError) {
+        console.warn('⚠️ Failed to create Google Drive folder (seminar still created):', driveError);
+      }
+    }
+
+    const enrollmentData = {
+      user_id: user.id,
+      seminar_id: seminarData.id,
+      status: 'approved' as const,
+      applied_at: new Date().toISOString(),
+      approved_at: new Date().toISOString(),
+      approved_by: user.id,
+      notes: 'Automatically enrolled as seminar creator'
+    };
     const { error: enrollmentError } = await supabase
       .from('enrollments')
-      .insert({
-        user_id: user.id,
-        seminar_id: seminar.id,
-        status: 'approved',
-        applied_at: new Date().toISOString(),
-        approved_at: new Date().toISOString(),
-        approved_by: user.id, // Self-approved
-        notes: 'Automatically enrolled as seminar creator'
-      });
+      .insert(enrollmentData as any);
 
     if (enrollmentError) {
       console.warn('Warning: Failed to auto-enroll creator:', enrollmentError);
@@ -181,29 +202,28 @@ export async function POST(request: NextRequest) {
       console.log('✅ Creator automatically enrolled in seminar');
     }
 
-    // Send notification about new seminar to all users (respecting RLS)
     try {
-      // Get user profile for notification
       const { data: userProfile } = await supabase
         .from('users')
         .select('name, email')
         .eq('id', user.id)
         .single();
 
-      const ownerName = userProfile?.name || userProfile?.email?.split('@')[0] || '익명';
-      
+      const profile = userProfile as { name?: string; email?: string } | null;
+      const ownerName = profile?.name || profile?.email?.split('@')[0] || '익명';
+
       await sendSeminarCreatedNotification(
-        seminar.id,
-        seminar.title,
+        seminarData.id,
+        seminarData.title,
         ownerName,
-        seminar.description || ''
+        seminarData.description || ''
       );
     } catch (notificationError) {
       console.error('Failed to send seminar creation notification:', notificationError);
       // Don't fail the seminar creation if notification fails
     }
 
-    return NextResponse.json({ seminar });
+    return NextResponse.json({ seminar: seminarData });
   } catch (error) {
     console.error('Unexpected error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
