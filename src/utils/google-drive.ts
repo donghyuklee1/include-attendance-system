@@ -143,7 +143,7 @@ export async function uploadFileToGoogleDrive(
       throw new Error('Drive resumable upload: no Location header');
     }
 
-    // 2) Upload file content in one request
+    // 2) Upload file content in one request (BodyInit 타입 호환: Buffer → Uint8Array)
     const size = fileContent.length;
     const uploadRes = await fetch(location, {
       method: 'PUT',
@@ -152,7 +152,7 @@ export async function uploadFileToGoogleDrive(
         'Content-Range': `bytes 0-${size - 1}/${size}`,
         'Content-Type': mimeType,
       },
-      body: fileContent,
+      body: new Uint8Array(fileContent),
     });
 
     if (!uploadRes.ok) {
