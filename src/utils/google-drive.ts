@@ -9,11 +9,13 @@ export function getGoogleDriveClient() {
   }
 
   try {
-    const serviceAccountKey = JSON.parse(
-      typeof serviceAccountKeyStr === 'string' 
-        ? serviceAccountKeyStr 
-        : Buffer.from(serviceAccountKeyStr, 'base64').toString('utf-8')
-    );
+    // Detect whether the env value is raw JSON or base64-encoded JSON
+    let keyJsonStr = String(serviceAccountKeyStr);
+    if (!keyJsonStr.trim().startsWith('{')) {
+      // assume base64
+      keyJsonStr = Buffer.from(keyJsonStr, 'base64').toString('utf-8');
+    }
+    const serviceAccountKey = JSON.parse(keyJsonStr);
 
     const auth = new google.auth.GoogleAuth({
       credentials: serviceAccountKey,
@@ -83,6 +85,10 @@ export async function uploadFileToGoogleDrive(
   try {
     console.log(`📤 Uploading file: ${fileName} to folder: ${parentFolderId}`);
     
+    // Ensure media body is a readable stream (safer on serverless)
+    const { Readable } = await import('stream');
+    const mediaBody = Buffer.isBuffer(fileContent) ? Readable.from(fileContent) : fileContent;
+
     const response = await drive.files.create({
       requestBody: {
         name: fileName,
@@ -90,7 +96,7 @@ export async function uploadFileToGoogleDrive(
       },
       media: {
         mimeType,
-        body: fileContent,
+        body: mediaBody,
       },
       fields: 'id, webViewLink',
     });
@@ -101,9 +107,15 @@ export async function uploadFileToGoogleDrive(
 
     console.log(`✅ Uploaded file: ${fileName} (ID: ${response.data.id})`);
     return { id: response.data.id, webViewLink: response.data.webViewLink || undefined };
-  } catch (error) {
-    console.error('❌ Error uploading file:', error);
-    throw new Error('Failed to upload file to Google Drive');
+  } catch (error: any) {
+    console.error('❌ Error uploading file:', {
+      message: error?.message,
+      code: error?.code,
+      errors: error?.errors || undefined,
+      stack: error?.stack,
+    });
+    // rethrow to allow upstream handler to return details
+    throw error;
   }
 }
 

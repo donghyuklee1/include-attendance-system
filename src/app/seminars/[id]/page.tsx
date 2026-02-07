@@ -351,7 +351,8 @@ export default function SeminarDetailPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || 'Upload failed');
+        console.error('Upload API error response:', err);
+        throw new Error(err?.error ? `${err.error}${err.details ? `: ${err.details}` : ''}` : 'Upload failed');
       }
 
       const result = await res.json();
@@ -362,9 +363,11 @@ export default function SeminarDetailPage() {
         window.open(result.data.fileLink, '_blank');
       }
       alert('업로드 완료');
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Error uploading file:', err);
-      alert(err instanceof Error ? err.message : '업로드 실패');
+      // Show detailed message when available
+      const message = err?.message || (err?.error ? `${err.error}${err.details ? `: ${err.details}` : ''}` : '업로드 실패');
+      alert(message);
     } finally {
       setUploadingFile(false);
     }
