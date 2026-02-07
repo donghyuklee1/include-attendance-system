@@ -137,13 +137,16 @@ export async function uploadFileToGoogleDrive(
   }
 }
 
-// Generate folder name for seminar evidence (format: "세미나명_YYYYMMDD", 날짜 = 증빙 제출/조회 시점)
+// Generate folder name for seminar evidence (format: "세미나명_YYYYMMDD", 날짜 = 증빙 제출/조회 시점, 한국 시간 기준)
 export function generateFolderName(seminarTitle: string, date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const dateStr = `${year}${month}${day}`;
-  
+  // 서버가 UTC일 수 있으므로 한국(Asia/Seoul) 기준 날짜로 포맷
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dateStr = formatter.format(date).replace(/-/g, '');
   return `${seminarTitle}_${dateStr}`;
 }
 
